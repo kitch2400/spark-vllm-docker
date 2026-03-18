@@ -559,7 +559,10 @@ make_node_script() {
 
     local tmp; tmp=$(mktemp /tmp/vllm_node_script_XXXXXX.sh)
     grep -v -- '--distributed-executor-backend' "$script_path" > "$tmp"
-    sed -i "$ s/$/ $extra/" "$tmp"
+    # Insert args after model name, handling multi-line (with \) and single-line commands
+    # Also handles model paths with spaces
+    sed -i "s|^\(vllm serve .*\) \\\\$|\1 $extra \\\\|" "$tmp"
+    sed -i "s|^\(vllm serve .[^\\\\]*\)$|\1 $extra|" "$tmp"
     chmod +x "$tmp"
     echo "$tmp"
 }
@@ -761,6 +764,8 @@ exec_no_ray_cluster() {
         else
             local clean
             clean=$(echo "$base_cmd" | sed 's/--distributed-executor-backend[[:space:]]*[^[:space:]]*//')
+            # For direct commands, append multi-node args at the end
+            # This works for both single-line and multi-line commands
             worker_cmd="$clean --nnodes $total_nodes --node-rank $rank --master-addr $HEAD_IP --headless"
         fi
         echo "Launching worker (rank $rank) on $worker..."
@@ -776,6 +781,7 @@ exec_no_ray_cluster() {
     else
         local clean
         clean=$(echo "$base_cmd" | sed 's/--distributed-executor-backend[[:space:]]*[^[:space:]]*//')
+        # For direct commands, append multi-node args at the end
         head_cmd="$clean --nnodes $total_nodes --node-rank 0 --master-addr $HEAD_IP"
     fi
 
